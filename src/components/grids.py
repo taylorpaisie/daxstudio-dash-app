@@ -21,7 +21,7 @@ def grid(identifier, height=360):
             "ensureDomOrder": True,
             "animateRows": False,
             "suppressFieldDotNotation": True,
-            "overlayNoRowsTemplate": "<span>No rows to display</span>",
+            "localeText": {"noRowsToShow": "No rows to display"},
         },
         style={"height": height, "width": "100%"},
     )

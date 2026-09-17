@@ -21,12 +21,26 @@ class FakeProvider:
             raise StudioError("Synthetic query error")
         if "TMSCHEMA_TABLES" in query:
             frame = pd.DataFrame([{"ID": 1, "Name": "Test Sales", "IsHidden": False}])
-        elif "TMSCHEMA_COLUMNS" in query or "TMSCHEMA_MEASURES" in query:
+        elif "TMSCHEMA_COLUMNS" in query:
             frame = pd.DataFrame(
                 [
                     {
                         "TableID": 1,
-                        "Name": "Amount" if "COLUMNS" in query else "Total",
+                        "ExplicitName": "Amount",
+                        "InferredName": None,
+                        "ExplicitDataType": 8,
+                        "InferredDataType": None,
+                        "IsHidden": False,
+                    }
+                ],
+                dtype=object,
+            )
+        elif "TMSCHEMA_MEASURES" in query:
+            frame = pd.DataFrame(
+                [
+                    {
+                        "TableID": 1,
+                        "Name": "Total",
                         "DataType": 8,
                         "IsHidden": False,
                     }

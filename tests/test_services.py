@@ -57,6 +57,25 @@ def test_metadata_join_and_identifiers():
     assert result[0]["objects"][1]["kind"] == "Measure"
 
 
+def test_metadata_uses_documented_column_rowset_and_inferred_fields():
+    class InferredProvider(FakeProvider):
+        def execute(self, spec, query, limit, timeout):
+            result = super().execute(spec, query, limit, timeout)
+            if "TMSCHEMA_COLUMNS" in query:
+                assert "[ExplicitName]" in query and "[InferredDataType]" in query
+                assert "[Name]" not in query and "[DataType]" not in query
+                result.frame.loc[0, "ExplicitName"] = None
+                result.frame.loc[0, "InferredName"] = "Calculated]Column"
+                result.frame.loc[0, "ExplicitDataType"] = 1
+                result.frame.loc[0, "InferredDataType"] = 6
+            return result
+
+    result = load_metadata(InferredProvider(), ConnectionSpec("localhost:1234"))
+    column = result[0]["objects"][0]
+    assert column["identifier"] == "'Test Sales'[Calculated]]Column]"
+    assert column["type"] == "Integer"
+
+
 def test_dependency_filters_are_literal_case_insensitive_null_safe():
     frame = pd.DataFrame(
         [

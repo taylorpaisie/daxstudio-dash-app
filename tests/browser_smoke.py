@@ -29,8 +29,9 @@ class Browser:
             try:
                 pages = requests.get(endpoint + "/json", timeout=1).json()
                 page = next(item for item in pages if item["type"] == "page")
-                self.socket = websocket.create_connection(page["webSocketDebuggerUrl"],
-                                                          suppress_origin=True, timeout=10)
+                self.socket = websocket.create_connection(
+                    page["webSocketDebuggerUrl"], suppress_origin=True, timeout=10
+                )
                 break
             except (requests.RequestException, StopIteration):
                 time.sleep(0.1)
@@ -41,8 +42,10 @@ class Browser:
         self.call("Runtime.enable")
         self.call("Page.enable")
         self.call("Log.enable")
-        self.call("Emulation.setDeviceMetricsOverride", {"width": 1440, "height": 1000,
-                                                        "deviceScaleFactor": 1, "mobile": False})
+        self.call(
+            "Emulation.setDeviceMetricsOverride",
+            {"width": 1440, "height": 1000, "deviceScaleFactor": 1, "mobile": False},
+        )
 
     def call(self, method, params=None):
         self.counter += 1
@@ -51,13 +54,20 @@ class Browser:
             result = json.loads(self.socket.recv())
             if result.get("method") == "Runtime.exceptionThrown":
                 self.errors.append(result)
+            if (
+                result.get("method") == "Runtime.consoleAPICalled"
+                and result["params"]["type"] == "error"
+            ):
+                self.errors.append(result)
             if result.get("id") == self.counter:
                 assert "error" not in result, result
                 return result.get("result", {})
 
     def evaluate(self, expression):
-        result = self.call("Runtime.evaluate", {"expression": expression,
-                                               "returnByValue": True, "awaitPromise": True})
+        result = self.call(
+            "Runtime.evaluate",
+            {"expression": expression, "returnByValue": True, "awaitPromise": True},
+        )
         assert "exceptionDetails" not in result, result
         return result.get("result", {}).get("value")
 
@@ -73,7 +83,9 @@ class Browser:
         self.evaluate(f"document.getElementById({json.dumps(identifier)}).click()")
 
     def set_props(self, identifier, props):
-        self.evaluate(f"window.dash_clientside.set_props({json.dumps(identifier)}, {json.dumps(props)})")
+        self.evaluate(
+            f"window.dash_clientside.set_props({json.dumps(identifier)}, {json.dumps(props)})"
+        )
         time.sleep(0.15)
 
     def screenshot(self, name):
@@ -84,15 +96,27 @@ class Browser:
 def main():
     logging.getLogger("werkzeug").setLevel(logging.ERROR)
     Path("test-results").mkdir(exist_ok=True)
-    chrome = Path(os.environ.get("PROGRAMFILES", "C:/Program Files")) / "Google/Chrome/Application/chrome.exe"
+    chrome = (
+        Path(os.environ.get("PROGRAMFILES", "C:/Program Files"))
+        / "Google/Chrome/Application/chrome.exe"
+    )
     if not chrome.exists():
         chrome = Path("C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe")
-    process = subprocess.Popen([
-        str(chrome), "--headless=new", "--disable-gpu", "--no-first-run",
-        "--no-default-browser-check", "--remote-debugging-port=9227",
-        f"--user-data-dir={Path('test-results/browser-profile').resolve()}", "about:blank",
-    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+    process = subprocess.Popen(
+        [
+            str(chrome),
+            "--headless=new",
+            "--disable-gpu",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--remote-debugging-port=9227",
+            f"--user-data-dir={Path('test-results/browser-profile').resolve()}",
+            "about:blank",
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+    )
     servers = []
     try:
         for port, provider in [(8051, None), (8052, FakeProvider())]:
@@ -102,10 +126,15 @@ def main():
         browser = Browser(9227)
         browser.call("Page.navigate", {"url": "http://127.0.0.1:8051"})
         browser.wait("document.getElementById('editor') && document.querySelector('.ag-root')")
-        browser.wait("document.getElementById('hydrated') === null && document.getElementById('model-tree').textContent.includes('No model')")
+        browser.wait(
+            "document.getElementById('hydrated') === null && "
+            "document.getElementById('model-tree').textContent.includes('No model')"
+        )
         browser.screenshot("startup-dark.png")
         browser.click("run-query")
-        browser.wait("document.getElementById('query-status').textContent.includes('Connect to a model')")
+        browser.wait(
+            "document.getElementById('query-status').textContent.includes('Connect to a model')"
+        )
         browser.set_props("server", {"value": "localhost:1"})
         browser.click("connect")
         browser.wait("document.getElementById('connection-message').textContent.includes('Failed')")
@@ -117,14 +146,53 @@ def main():
         browser.wait("document.getElementById('editor') && document.querySelector('.ag-root')")
         browser.set_props("server", {"value": "localhost:1234"})
         browser.click("connect")
-        browser.wait("document.getElementById('connection-badge').textContent.includes('TEST MODEL')")
+        browser.wait(
+            "document.getElementById('connection-badge').textContent.includes('TEST MODEL')"
+        )
         browser.wait("document.getElementById('model-tree').textContent.includes('Test Sales')")
         browser.click("expand-model")
         browser.wait("document.querySelector('#model-tree details').open")
         browser.click("run-query")
         browser.wait("document.getElementById('query-status').textContent.includes('Success')")
         browser.wait("document.querySelector('#query-grid .ag-row')")
+        browser.wait(
+            "document.querySelector('#query-grid .ag-header').getBoundingClientRect().width > 500"
+        )
         browser.screenshot("query-test-data.png")
+        browser.set_props("editor", {"value": 'EVALUATE ROW("Value", 1)'})
+        browser.evaluate("document.getElementById('editor').focus()")
+        browser.call(
+            "Input.dispatchKeyEvent",
+            {
+                "type": "keyDown",
+                "key": "Enter",
+                "code": "Enter",
+                "windowsVirtualKeyCode": 13,
+                "modifiers": 2,
+            },
+        )
+        browser.call(
+            "Input.dispatchKeyEvent",
+            {"type": "keyUp", "key": "Enter", "code": "Enter", "windowsVirtualKeyCode": 13},
+        )
+        browser.wait("document.getElementById('query-status').textContent.includes('2 rows')")
+        browser.evaluate(
+            "(async()=>{const api=await window.dash_ag_grid.getApiAsync('query-grid');"
+            "api.applyColumnState({state:[{colId:'c0',sort:'desc'}]});})()"
+        )
+        browser.wait(
+            "document.querySelector('#query-grid .ag-row[row-index=\"0\"] [col-id=c0]')"
+            ".textContent === '2'"
+        )
+        browser.evaluate(
+            "(async()=>{const api=await window.dash_ag_grid.getApiAsync('query-grid');"
+            "api.setFilterModel({c0:{filterType:'number',type:'greaterThan',filter:1}});"
+            "api.onFilterChanged();})()"
+        )
+        browser.wait(
+            "document.querySelectorAll('#query-grid .ag-center-cols-container .ag-row')"
+            ".length === 1"
+        )
         browser.set_props("tabs", {"active_tab": "dependencies"})
         browser.click("load-dependencies")
         browser.wait("document.getElementById('dependency-status').textContent.includes('Success')")
@@ -135,13 +203,15 @@ def main():
         browser.set_props("tabs", {"active_tab": "history"})
         browser.wait("document.querySelector('#history-grid .ag-cell')")
         browser.evaluate("document.querySelector('#history-grid .ag-cell').click()")
-        browser.wait("document.getElementById('editor').value.includes('TOPN(')")
+        browser.wait("document.getElementById('editor').value.includes('ROW(')")
         browser.set_props("editor", {"value": "EVALUATE EMPTY"})
         browser.click("run-query")
         browser.wait("document.getElementById('query-status').textContent.includes('zero rows')")
         browser.set_props("editor", {"value": "EVALUATE BROKEN"})
         browser.click("run-query")
-        browser.wait("document.getElementById('query-status').textContent.includes('Synthetic query error')")
+        browser.wait(
+            "document.getElementById('query-status').textContent.includes('Synthetic query error')"
+        )
         browser.click("clear-query")
         browser.wait("document.getElementById('editor').value === ''")
         browser.evaluate("document.querySelector('#model-tree .object-button').click()")
@@ -149,8 +219,10 @@ def main():
         browser.click("disconnect")
         browser.wait("document.getElementById('connection-badge').textContent === 'Disconnected'")
         assert not browser.errors, browser.errors
-        print("PASS: real-adapter startup/error; dark/light themes; fake-model connection, metadata, "
-              "queries, dependency and history row clicks, empty/error states, insertion, disconnect.")
+        print(
+            "PASS: real-adapter startup/error; dark/light themes; fake-model connection, metadata, "
+            "queries, dependency and history row clicks, empty/error states, insertion, disconnect."
+        )
         browser.socket.close()
     finally:
         for server in servers:

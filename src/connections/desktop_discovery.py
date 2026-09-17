@@ -3,6 +3,7 @@
 import os
 import re
 import socket
+import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -27,11 +28,15 @@ class DesktopInstance:
         return asdict(self)
 
 
-def workspace_roots(local_app_data: Path | None = None) -> list[Path]:
+def workspace_roots(
+    local_app_data: Path | None = None, user_profile: Path | None = None
+) -> list[Path]:
     local = local_app_data or Path(os.environ.get("LOCALAPPDATA", ""))
     roots = [
         local / "Microsoft/Power BI Desktop/AnalysisServicesWorkspaces",
         local / "Microsoft/Power BI Desktop Store App/AnalysisServicesWorkspaces",
+        (user_profile or Path(os.environ.get("USERPROFILE", "")))
+        / "Microsoft/Power BI Desktop Store App/AnalysisServicesWorkspaces",
     ]
     packages = local / "Packages"
     try:
@@ -59,7 +64,7 @@ def _listening(port: int) -> bool:
 
 def _processes() -> list[dict]:
     result = []
-    for proc in psutil.process_iter(["pid", "name", "cmdline"]):
+    for proc in psutil.process_iter(["pid", "ppid", "name", "cmdline"]):
         try:
             if (proc.info["name"] or "").lower() in {"msmdsrv.exe", "pbidesktop.exe"}:
                 result.append(proc.info)
@@ -68,10 +73,45 @@ def _processes() -> list[dict]:
     return result
 
 
-def discover_instances(roots=None, probe=None, processes=None) -> list[DesktopInstance]:
+def _window_titles():
+    """Best-effort PBIX title lookup; titles never establish a connection."""
+    if sys.platform != "win32":
+        return {}
+    import ctypes
+    from ctypes import wintypes
+
+    titles = {}
+    user32 = ctypes.windll.user32
+    callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    user32.GetWindowTextLengthW.argtypes = [wintypes.HWND]
+    user32.IsWindowVisible.argtypes = [wintypes.HWND]
+    user32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+    user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+    user32.EnumWindows.argtypes = [callback_type, wintypes.LPARAM]
+
+    @callback_type
+    def visit(window, _):
+        length = user32.GetWindowTextLengthW(window)
+        if length and user32.IsWindowVisible(window):
+            buffer = ctypes.create_unicode_buffer(length + 1)
+            user32.GetWindowTextW(window, buffer, length + 1)
+            if "Power BI Desktop" in buffer.value:
+                pid = wintypes.DWORD()
+                user32.GetWindowThreadProcessId(window, ctypes.byref(pid))
+                titles[pid.value] = buffer.value.removesuffix(" - Power BI Desktop")
+        return True
+
+    user32.EnumWindows(visit, 0)
+    return titles
+
+
+def discover_instances(
+    roots=None, probe=None, processes=None, titles=None
+) -> list[DesktopInstance]:
     roots = workspace_roots() if roots is None else roots
     probe = _listening if probe is None else probe
     processes = _processes() if processes is None else processes
+    titles = _window_titles() if titles is None else titles
     # The engine's -s argument can expose a workspace outside the usual directories.
     roots = list(roots)
     for proc in processes:
@@ -102,17 +142,18 @@ def discover_instances(roots=None, probe=None, processes=None) -> list[DesktopIn
                 if not 1 <= port <= 65535 or not probe(port):
                     continue
                 workspace = file.parent.parent.name
-                pid = next(
+                process = next(
                     (
-                        p["pid"]
+                        p
                         for p in processes
                         if workspace.lower() in " ".join(p.get("cmdline") or []).lower()
                     ),
-                    None,
+                    {},
                 )
-                # Report titles are not reliably stored in workspace files; catalog
-                # names are obtained through DBSCHEMA_CATALOGS after connecting.
-                found[port] = DesktopInstance(f"localhost:{port}", workspace, pid=pid)
+                name = titles.get(process.get("ppid"), "Power BI Desktop")
+                found[port] = DesktopInstance(
+                    f"localhost:{port}", workspace, name=name, pid=process.get("pid")
+                )
             except (OSError, UnicodeError, ValueError):
                 continue
     return sorted(found.values(), key=lambda item: item.server)

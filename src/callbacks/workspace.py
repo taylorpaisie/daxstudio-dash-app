@@ -101,15 +101,23 @@ def register_callbacks(app, provider, registry):
             if state.spec:
                 set_props("server", {"value": state.spec.server})
                 set_props("catalog", {"options": [state.spec.catalog], "value": state.spec.catalog})
-                set_props("connection-badge", {
-                    "children": f"Connected · {state.spec.server} · {state.spec.catalog}",
-                    "className": "status-badge connected"})
-                set_props("model-message", {"children": f"{len(state.metadata)} tables · cached metadata"})
+                set_props(
+                    "connection-badge",
+                    {
+                        "children": f"Connected · {state.spec.server} · {state.spec.catalog}",
+                        "className": "status-badge connected",
+                    },
+                )
+                set_props(
+                    "model-message", {"children": f"{len(state.metadata)} tables · cached metadata"}
+                )
                 set_props("model-version", {"data": str(uuid.uuid4())})
             for kind, frame in state.results.items():
                 update_grid(f"{kind}-grid", frame, semantic=kind == "dependency")
-                set_props(f"{kind}-status", {
-                    "children": f"Restored last bounded result · {len(frame):,} rows"})
+                set_props(
+                    f"{kind}-status",
+                    {"children": f"Restored last bounded result · {len(frame):,} rows"},
+                )
         instances = discover_instances()
         set_props("instances", {"options": [item.as_option() for item in instances]})
         return True
@@ -142,6 +150,8 @@ def register_callbacks(app, provider, registry):
                 else "connection-message"
             )
         )
+        if action == "reload-model":
+            target = "model-message"
         session = current()
         if not session.lock.acquire(blocking=False):
             set_props(target, {"children": "An operation is already running in this session."})
@@ -166,6 +176,18 @@ def register_callbacks(app, provider, registry):
                     target, {"children": f"Found {len(names)} catalog(s). Select one and connect."}
                 )
             elif action == "connect":
+                # A failed target switch must never leave queries aimed at an old model.
+                session.spec = None
+                session.metadata = []
+                clear_results(session)
+                set_props(
+                    "connection-badge", {"children": "Disconnected", "className": "status-badge"}
+                )
+                set_props("model-message", {"children": "Connect to load model metadata."})
+                set_props("model-version", {"data": str(uuid.uuid4())})
+                set_props(
+                    "query-status", {"children": "Connect to a model before running a query."}
+                )
                 spec = ConnectionSpec(validate_server(server), catalog or "")
                 names = provider.catalogs(spec)
                 if not spec.catalog:
@@ -397,8 +419,9 @@ def register_callbacks(app, provider, registry):
         state = current()
         if trigger == "history-grid" and history_click:
             try:
-                value = next(item["query"] for item in state.history
-                             if item["id"] == history_click["rowId"])
+                value = next(
+                    item["query"] for item in state.history if item["id"] == history_click["rowId"]
+                )
             except (KeyError, StopIteration):
                 raise PreventUpdate from None
             set_props("tabs", {"active_tab": "query"})

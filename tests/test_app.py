@@ -9,17 +9,33 @@ from tests.fakes import FakeProvider
 
 
 def dispatch(client, action, **values):
-    state = {"server": "localhost:1234", "catalog": "TEST MODEL", "editor": "EVALUATE ROW()",
-             "row-limit": 1000, "timeout": 30, "dep-table": "", "dep-measure": "",
-             "dep-type": "", "dep-ref-type": ""}
+    state = {
+        "server": "localhost:1234",
+        "catalog": "TEST MODEL",
+        "editor": "EVALUATE ROW()",
+        "row-limit": 1000,
+        "timeout": 30,
+        "dep-table": "",
+        "dep-measure": "",
+        "dep-type": "",
+        "dep-ref-type": "",
+    }
     state.update(values)
-    response = client.post("/_dash-update-component", json={
-        "output": "events.data", "outputs": {"id": "events", "property": "data"},
-        "inputs": [{"id": name, "property": "n_clicks", "value": 1 if name == action else 0}
-                   for name in ACTIONS],
-        "state": [{"id": key, "property": "value", "value": value} for key, value in state.items()],
-        "changedPropIds": [f"{action}.n_clicks"],
-    })
+    response = client.post(
+        "/_dash-update-component",
+        json={
+            "output": "events.data",
+            "outputs": {"id": "events", "property": "data"},
+            "inputs": [
+                {"id": name, "property": "n_clicks", "value": 1 if name == action else 0}
+                for name in ACTIONS
+            ],
+            "state": [
+                {"id": key, "property": "value", "value": value} for key, value in state.items()
+            ],
+            "changedPropIds": [f"{action}.n_clicks"],
+        },
+    )
     assert response.status_code == 200, response.data
     return response.json.get("sideUpdate", {})
 
@@ -34,7 +50,12 @@ def test_layout_endpoints_and_host_origin_guards():
         assert name.encode() in response.data
     assert response.headers["Cache-Control"] == "no-store"
     assert client.get("/", headers={"Host": "evil.example"}).status_code == 403
-    assert client.post("/_dash-update-component", headers={"Origin": "https://evil.example"}).status_code == 403
+    assert (
+        client.post(
+            "/_dash-update-component", headers={"Origin": "https://evil.example"}
+        ).status_code
+        == 403
+    )
     assert client.get("/_dash-dependencies").status_code == 200
 
 
@@ -50,14 +71,21 @@ def test_full_callback_flow_and_session_isolation():
     assert len(result["query-grid"]["rowData"]) == 2
     assert result["history-grid"]["rowData"][0]["status"] == "Success"
     history_id = result["history-grid"]["rowData"][0]["_row_id"]
-    response = client.post("/_dash-update-component", json={
-        "output": "editor.value", "outputs": {"id": "editor", "property": "value"},
-        "inputs": [{"id": "examples", "property": "value", "value": None},
-                   {"id": "clear-query", "property": "n_clicks", "value": 0},
-                   {"id": "history-grid", "property": "cellClicked", "value": {"rowId": history_id}},
-                   {"id": "dependency-grid", "property": "cellClicked", "value": None}],
-        "state": [], "changedPropIds": ["history-grid.cellClicked"],
-    })
+    response = client.post(
+        "/_dash-update-component",
+        json={
+            "output": "editor.value",
+            "outputs": {"id": "editor", "property": "value"},
+            "inputs": [
+                {"id": "examples", "property": "value", "value": None},
+                {"id": "clear-query", "property": "n_clicks", "value": 0},
+                {"id": "history-grid", "property": "cellClicked", "value": {"rowId": history_id}},
+                {"id": "dependency-grid", "property": "cellClicked", "value": None},
+            ],
+            "state": [],
+            "changedPropIds": ["history-grid.cellClicked"],
+        },
+    )
     assert response.json["response"]["editor"]["value"] == "EVALUATE ROW()"
     exported = dispatch(client, "query-csv")["download"]["data"]
     assert "Value,Blank" in exported["content"]
@@ -84,4 +112,13 @@ def test_real_default_never_substitutes_fake(monkeypatch):
     client.get("/")
     response = dispatch(client, "connect")
     assert "ADOMD.NET could not load" in response["connection-message"]["children"]
-    assert "query-grid" not in response
+    assert response["query-grid"]["rowData"] == []
+
+
+def test_failed_target_switch_disconnects_old_model():
+    client = create_app(FakeProvider()).server.test_client()
+    client.get("/")
+    dispatch(client, "connect")
+    result = dispatch(client, "connect", server="remote:1234")
+    assert result["connection-badge"]["children"] == "Disconnected"
+    assert "Connect to a model" in dispatch(client, "run-query")["query-status"]["children"]

@@ -48,7 +48,13 @@ def _client_factory():
             load("netfx")
             import clr
 
-            configured = os.environ.get("DAX_ADOMD_DLL")
+            bundled = (
+                Path(__file__).resolve().parents[2]
+                / "vendor/adomd/Microsoft.AnalysisServices.AdomdClient.dll"
+            )
+            configured = os.environ.get("DAX_ADOMD_DLL") or (
+                str(bundled) if bundled.is_file() else None
+            )
             if configured:
                 path = Path(configured).resolve()
                 if not path.is_file():

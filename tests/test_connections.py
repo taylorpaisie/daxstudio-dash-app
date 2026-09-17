@@ -30,8 +30,8 @@ def test_discovery_encodings(tmp_path, encoding):
 def test_discovery_store_stale_malformed_and_duplicate(tmp_path):
     package = tmp_path / "Packages/Microsoft.MicrosoftPowerBIDesktop_8wekyb3d8bbwe"
     package.mkdir(parents=True)
-    roots = workspace_roots(tmp_path)
-    assert len(roots) == 5
+    roots = workspace_roots(tmp_path, tmp_path / "profile")
+    assert len(roots) == 6
     for root, port in zip(roots, ["1234", "1234", "bad", "65536", "2345"]):
         path = root / "Workspace" / "Data"
         path.mkdir(parents=True)

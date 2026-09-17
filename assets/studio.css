@@ -72,5 +72,9 @@ footer {border-top:1px solid var(--border); color:var(--muted); font-size:10px; 
 .Select-placeholder {color:var(--muted)!important; font-size:12px;}
 .Select-option {background:var(--raised)!important; color:var(--text)!important;}
 .Select-option.is-focused {background:#287bd433!important;}
+#app-shell {--Dash-Fill-Inverse-Strong:var(--raised); --Dash-Text-Strong:var(--text); --Dash-Text-Weak:var(--muted); --Dash-Text-Disabled:var(--muted); --Dash-Stroke-Strong:var(--border); --Dash-Fill-Interactive-Weak:var(--raised); --Dash-Fill-Interactive-Strong:#287bd4;}
+#app-shell .dash-dropdown-trigger, #app-shell .dash-dropdown-search {background:var(--raised); color:var(--text); border-color:var(--border); font-size:12px;}
+.dash-dropdown-content {background:#1c2432!important; color:#e3e9f3!important; --Dash-Fill-Inverse-Strong:#1c2432; --Dash-Text-Strong:#e3e9f3; --Dash-Text-Weak:#94a3b8; --Dash-Fill-Interactive-Weak:#2a3547; --Dash-Stroke-Strong:#45536a;}
+body:has(#app-shell[data-theme=light]) .dash-dropdown-content {background:#fff!important; color:#19283e!important; --Dash-Fill-Inverse-Strong:#fff; --Dash-Text-Strong:#19283e; --Dash-Text-Weak:#5d6c80; --Dash-Fill-Interactive-Weak:#eaf0f7; --Dash-Stroke-Strong:#d5deea;}
 @media(max-width:1100px) {.sidebar{width:230px}.pane{padding:18px 16px}.topbar{padding:14px 16px}.status-badge{max-width:200px}}
 @media(max-width:760px) {.workbench{display:block}.sidebar{width:100%;position:static;max-height:260px;border-bottom:1px solid var(--border)}.topbar{flex-wrap:wrap}.dependency-filters{grid-template-columns:1fr}.connection-fields .field{min-width:200px}.eyebrow{display:none}}
